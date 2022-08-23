@@ -8,6 +8,9 @@ from dotenv import find_dotenv, load_dotenv
 import os
 import mqttClient
 import requests
+import sys
+import random
+import faceApi
 # 使用先创建.env配置文件
 
 class mqttClientFace(threading.Thread):
@@ -25,7 +28,8 @@ class mqttClientFace(threading.Thread):
         self.mqttServerIp = os.environ.get("MQTT_SERVER_HOST")
         self.mqttServerPort = int(os.environ.get("MQTT_SERVER_PORT"))
         self.mqttId = os.environ.get("MQTT_ID")
-
+        #图片的下周地址
+        self.downloadImgPath = os.path.dirname(os.path.realpath(sys.argv[0])) + '\\faceData'
         self.init()
 
     def init(self):
@@ -45,6 +49,9 @@ class mqttClientFace(threading.Thread):
         self.client.reconnect_delay_set(min_delay=1, max_delay=120)
 
         logger.info("网络通讯线程初始化结束")
+
+        #初始化识别器
+        self.api = faceApi.faceApi()
 
     def connect(self):
         try:
@@ -118,6 +125,7 @@ class mqttClientFace(threading.Thread):
                 resp = json.loads(message.payload.decode('utf-8'))
             except:
                 logger.warning("格式错误")
+                self.publishNormalAck(msgId,"json error")
                 return False
             try:
                 img = resp["img"]
@@ -125,40 +133,71 @@ class mqttClientFace(threading.Thread):
                 msgId = resp["msgId"]
             except:
                 logger.warning("字段错误")
+                self.publishNormalAck(msgId,"msg error")
                 return False
             #首先下载图片，然后将图片加入的预备区    
-
+            if(self.download(img,self.downloadImgPath,name) == False):
+                self.publishNormalAck(msgId,"download error")
+            
+            #然后将图片按照对应名称放
+            self.api.input_new_face(name,self.downloadImgPath+"\\"+name)
+            self.publishNormalAck(msgId,"succeed")
 
         elif(message.topic.find("updateFaceLib") != -1):
             logger.info("任务：更新识别库")
             try:
                 resp = json.loads(message.payload.decode('utf-8'))
             except:
+                self.publishNormalAck(msgId,"json error")
                 logger.warning("格式错误")
                 return False
             try:
                 msgId = resp["msgId"]
             except:
                 logger.warning("字段错误")
+                self.publishNormalAck(msgId,"msg error")
                 return False
+            self.api.update_facebank()
+            self.publishNormalAck(msgId,"succeed")
+
         elif(message.topic.find("rct") != -1):
             logger.info("任务：识别")
             try:
                 resp = json.loads(message.payload.decode('utf-8'))
             except:
+                self.publishNormalAck(msgId,"json error")
                 logger.warning("格式错误")
                 return False
             try:
                 img = resp["img"]
                 msgId = resp["msgId"]
             except:
+                self.publishNormalAck(msgId,"msg error")
                 logger.warning("字段错误")
-                return False           
+                return False      
+
+            inferImgPath = os.path.dirname(os.path.realpath(sys.argv[0])) + '\\out'
+            if(self.download(img,inferImgPath,msgId) == False):
+                self.publishNormalAck(msgId,"download error")
+                return False
+            
+            res = self.api.infer(inferImgPath + "\\" + msgId , inferImgPath + "\\" + msgId + "-infer")
+            if(res == None):
+                self.publishNormalAck(msgId,"infer error")
+            else:
+                #上传图片
+                imgBed = ""
+                with open(inferImgPath + "\\" + msgId , inferImgPath + "\\" + msgId + "-infer", "rb")as f_abs:# 以2进制方式打开图片
+                    body = {'camera_code': (None, "识别"),'image_face': (msgId, f_abs, 'image/jpeg')}
+                    response = requests.post(url=imgBed, files=body).json
+                    resImg = json.loads(response.text).get('data').get('url')
+                self.publishRecognitionAck(msgId,resImg,res)
+
         else:
             logger.warning("warning","Received message '" + str(message.payload) + "' on topic '"
             + message.topic + "' with QoS " + str(message.qos))
+            self.publishNormalAck(msgId,"topic error")
  
-
     #消息发送成功后的回调
     #对于Qos级别为1和2的消息，这意味着已经完成了与代理的握手。
     #对于Qos级别为0的消息，这只意味着消息离开了客户端。
@@ -199,21 +238,20 @@ class mqttClientFace(threading.Thread):
         
 
 
-    def download(self, downloadURL, name):
+    def download(self, downloadURL,downloadPath, name):
         """ 进行下载请求 """
         try:
-            response = requests.post(downloadURL,timeout=10)
+            headers = {'content-type': "application/octet-stream",}
+            response = requests.post(downloadURL,headers = headers,timeout=10)
+            with open(downloadPath + name , "wb") as code:
+                code.write(response.content)
+                code.close()
+                logger.info("下载完成{}".format(name))
+                return True
         except:
             logger.warning("下载请求失败")
-        data = response.content
-        print(self.savePath +'\\'+name)
-        try:
-            with open(self.savePath +'\\'+name,"wb") as f:
-                f.write(data)
-            print("下载完成: {}".format(name))
-        except:
-            print("下载失败: {}".format(name))
-
+            return False
+        
 import keyboard
 
 def publishRecognitionAck(msgId,url,res):

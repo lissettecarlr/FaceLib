@@ -84,6 +84,7 @@ class faceApi():
             logger.info("{} img {} input successm . move".format(name,faceImgPath))
 
 
+
     # 更新比对数据库，产出facebank.pth和names.npy
     def update_facebank(self,facebank_path=None,device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")):
         if(facebank_path == None):
