@@ -12,33 +12,16 @@ from recognizer.FaceRecognizer import *
 from loguru import logger
 from faceApi import *
 import argparse
-
-#GUI
-from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import QTimer,QTime
-from gui import Ui_MainWindow
-import sys
-
-
-class wincore (QtWidgets.QMainWindow,Ui_MainWindow):
-    def __init__(self):
-        super(wincore,self).__init__()
-        self.setupUi(self)
-        self.init()
-
-    def init():
-        pass
-
-    def closeEvent(self,event):
-        pass
-
+import mqttClient
+import keyboard
+import time
+from guiMain import startGui
 
 def main(args):
     face = faceApi()
 
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('-m','--model', required=True ,choices=['find', 'input','update','gui'])
+    parser.add_argument('-m','--model', required=True ,choices=['find', 'input','update','gui','cli'])
     parser.add_argument('-i','--img', default='',help="input face image path")
     parser.add_argument('-o','--outImg', default='',help="output retinaface image path")
     parser.add_argument('-n','--imgName', default='',help="input face image name")
@@ -54,10 +37,20 @@ def main(args):
         imgName = args.imgName
         face.input_new_face(imgName,imgPath)
     elif(args.model == "gui"):
-        app= QtWidgets.QApplication(sys.argv)
-        win = wincore()
-        win.show()
-        sys.exit(app.exec_())
+        startGui()
+
+    elif(args.model == "cli"):
+        face = mqttClient.mqttClientFace()
+        face.start()
+        face.go()
+        try:
+            while(1):
+                if keyboard.is_pressed('q'): 
+                    face.close()
+                    break
+                time.sleep(5)
+        except:
+            face.close()
     else:
         logger.warning("model error : {} ".format(args.model))
     return 

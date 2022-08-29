@@ -134,7 +134,7 @@ class faceApi():
         return faces_embs, names
 
     #识别图片，识别返回None
-    def infer(self,inputImgPath,outImgPaht):
+    def infer(self,inputImgPath,outImgPath):
         targets, names = self.load_facebank()
         if(targets == None):
             return
@@ -159,5 +159,5 @@ class faceApi():
             logger.info("name={},score={}".format(res["name"],res["score"]))
             resList.append(res)
 
-        cv2.imwrite(outImgPaht,image)
+        cv2.imwrite(outImgPath,image)
         return resList

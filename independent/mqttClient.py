@@ -12,7 +12,7 @@ import sys
 import random
 import faceApi
 # 使用先创建.env配置文件
-
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 class mqttClientFace(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -20,6 +20,7 @@ class mqttClientFace(threading.Thread):
         self.closeFlag = True
         self.taskStatus = ""
         self.netChangeCb = None
+        self.inferCallbakc = None
         #当前连接状态
         self.connectStatus = False
         load_dotenv(find_dotenv('.env'))
@@ -28,12 +29,18 @@ class mqttClientFace(threading.Thread):
         self.mqttServerIp = os.environ.get("MQTT_SERVER_HOST")
         self.mqttServerPort = int(os.environ.get("MQTT_SERVER_PORT"))
         self.mqttId = os.environ.get("MQTT_ID")
+        # print("-------------------")
+        # print(self.mqttServerName)
+        # print(self.mqttServerPassword)
+        # print(self.mqttServerIp)
+        # print(self.mqttServerPort)
+        # print("-------------------")
         #图片的下周地址
         self.downloadImgPath = os.path.dirname(os.path.realpath(sys.argv[0])) + '\\faceData'
         self.init()
 
     def init(self):
-        face = mqttClient.mqttClientFace()
+        #face = mqttClient.mqttClientFace()
         self.client = mqtt.Client(client_id=self.mqttId,clean_session=False)
         
         self.client.on_connect = self.connectCb
@@ -95,7 +102,7 @@ class mqttClientFace(threading.Thread):
     def getNetStatus(self):
         return self.connectStatus
 
-         
+   
     # 连接回调
     def connectCb(self,client, userdata, flags, rc):
         if(rc == 0):
@@ -103,7 +110,7 @@ class mqttClientFace(threading.Thread):
             self.connectStatus = True
             if(self.netChangeCb):
                 self.netChangeCb(self.connectStatus)
-            self.client.subscribe([("faceRecognition/"+self.mqttId+"/addFace", 0), ("faceRecognition/"+self.mqttId+"/updateFaceLib", 0),("faceRecognition/"+self.mqttId+"/rec", 0)])
+            self.client.subscribe([("faceRecognition/"+self.mqttId+"/addFace", 0), ("faceRecognition/"+self.mqttId+"/updateFaceLib", 0),("faceRecognition/"+self.mqttId+"/rct", 0)])
         else:
             # 1协议版本不正确  2客户端标识符无效 3服务器不可用 4用户名或密码错误 5未授权
             logger.info("MQTT连接被拒绝 {}".format(rc))
@@ -119,6 +126,7 @@ class mqttClientFace(threading.Thread):
         #print("Disconnected with result code "+str(rc))
 
     def messageCb(self,client, userdata, message):
+        #print(message.topic)
         if(message.topic.find("addFace") != -1):
             logger.debug("任务：添加一张人脸图")
             try:
@@ -136,13 +144,12 @@ class mqttClientFace(threading.Thread):
                 self.publishNormalAck(msgId,"msg error")
                 return False
             #首先下载图片，然后将图片加入的预备区    
-            if(self.download(img,self.downloadImgPath,name) == False):
+            if(self.download(img,self.downloadImgPath,name+".jpg") == False):
                 self.publishNormalAck(msgId,"download error")
             
             #然后将图片按照对应名称放
-            self.api.input_new_face(name,self.downloadImgPath+"\\"+name)
+            self.api.input_new_face(name,self.downloadImgPath+"\\"+name+".jpg")
             self.publishNormalAck(msgId,"succeed")
-
         elif(message.topic.find("updateFaceLib") != -1):
             logger.info("任务：更新识别库")
             try:
@@ -177,21 +184,34 @@ class mqttClientFace(threading.Thread):
                 return False      
 
             inferImgPath = os.path.dirname(os.path.realpath(sys.argv[0])) + '\\out'
-            if(self.download(img,inferImgPath,msgId) == False):
+            if(self.download(img,inferImgPath,msgId+".jpg") == False):
                 self.publishNormalAck(msgId,"download error")
                 return False
-            
-            res = self.api.infer(inferImgPath + "\\" + msgId , inferImgPath + "\\" + msgId + "-infer")
+            inImgPath = inferImgPath + '\\' + msgId + ".jpg"
+            outImgPath = inferImgPath + "\\" + msgId + "-infer.jpg"
+            res = self.api.infer(inImgPath ,outImgPath )
+            logger.debug("outImgPath:{}".format(outImgPath))
             if(res == None):
                 self.publishNormalAck(msgId,"infer error")
             else:
                 #上传图片
-                imgBed = ""
-                with open(inferImgPath + "\\" + msgId , inferImgPath + "\\" + msgId + "-infer", "rb")as f_abs:# 以2进制方式打开图片
-                    body = {'camera_code': (None, "识别"),'image_face': (msgId, f_abs, 'image/jpeg')}
-                    response = requests.post(url=imgBed, files=body).json
-                    resImg = json.loads(response.text).get('data').get('url')
+                imgBed = "http://47.108.53.108:2077/api/file/upload"
+                file = open(outImgPath, 'rb')
+                multipart_encoder = MultipartEncoder(
+                    fields={"file":("test.jpg",file,"image/jpg")},
+                )
+                h={}
+                h['Content-Type']=multipart_encoder.content_type
+                postResult = requests.post(imgBed,data=multipart_encoder,headers=h)
+                logger.info("img upload:{}".format(postResult.text))
+                resImg = json.loads(postResult.text).get('data').get('url')
                 self.publishRecognitionAck(msgId,resImg,res)
+                # 结果回调
+                if(self.inferCallbakc !=None):
+                    nlist = ""
+                    for n in res:
+                        nlist = nlist + " " + n["name"]
+                    self.inferCallbakc(msgId,outImgPath,nlist)
 
         else:
             logger.warning("warning","Received message '" + str(message.payload) + "' on topic '"
@@ -208,10 +228,12 @@ class mqttClientFace(threading.Thread):
 
     # 识别结果应答 
     def publishRecognitionAck(self,msgId,url,res):
-        aItem = {}
-        aItem["msgId"] = msgId
-        aItem["url"] = url
-        aItem["res"] = res
+        #print(res)
+        #print(type(res))
+        nlist = []
+        for n in res:
+            nlist.append(n["name"])
+        aItem={"msgId":msgId,"img":url,"result":nlist}
         ackJson = json.dumps(aItem, ensure_ascii=False)
         if(self.connectStatus == True):
             self.client.publish("faceRecognition/"+self.mqttId+"/recAck",ackJson)
@@ -227,8 +249,10 @@ class mqttClientFace(threading.Thread):
         return False
 
 
-    def setCallback(self,netChange=None):
+   
+    def setCallback(self,netChange=None,inferCallback=None):
         self.netChangeCb = netChange
+        self.inferCallbakc = inferCallback
 
 
     #订阅主题后的回调
@@ -239,12 +263,14 @@ class mqttClientFace(threading.Thread):
 
 
     def download(self, downloadURL,downloadPath, name):
+        logger.debug("downloadURL={}".format(downloadURL))
+        logger.debug("downloadPath={}".format(downloadPath+"\\"+name))
         """ 进行下载请求 """
         try:
             headers = {'content-type': "application/octet-stream",}
-            response = requests.post(downloadURL,headers = headers,timeout=10)
-            with open(downloadPath + name , "wb") as code:
-                code.write(response.content)
+            re = requests.get(downloadURL,headers = headers,timeout=10)
+            with open(downloadPath +"\\"+ name , "wb") as code:
+                code.write(re.content)
                 code.close()
                 logger.info("下载完成{}".format(name))
                 return True
@@ -254,13 +280,6 @@ class mqttClientFace(threading.Thread):
         
 import keyboard
 
-def publishRecognitionAck(msgId,url,res):
-    aItem = {}
-    aItem["msgId"] = msgId
-    aItem["url"] = url
-    aItem["res"] = res
-    ackJson = json.dumps(aItem, ensure_ascii=False)
-    print(ackJson)
 
 def main():
     face = mqttClientFace()
