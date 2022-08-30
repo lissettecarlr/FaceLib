@@ -29,11 +29,14 @@ class mqttClientFace(threading.Thread):
         self.mqttServerIp = os.environ.get("MQTT_SERVER_HOST")
         self.mqttServerPort = int(os.environ.get("MQTT_SERVER_PORT"))
         self.mqttId = os.environ.get("MQTT_ID")
+        self.imgbed = os.environ.get("IMGBED")
         # print("-------------------")
         # print(self.mqttServerName)
         # print(self.mqttServerPassword)
         # print(self.mqttServerIp)
         # print(self.mqttServerPort)
+        # print(self.mqttId)
+        # print(self.imgbed)
         # print("-------------------")
         #图片的下周地址
         self.downloadImgPath = os.path.dirname(os.path.realpath(sys.argv[0])) + '\\faceData'
@@ -164,6 +167,7 @@ class mqttClientFace(threading.Thread):
                 logger.warning("字段错误")
                 self.publishNormalAck(msgId,"msg error")
                 return False
+            self.api.data_align()
             self.api.update_facebank()
             self.publishNormalAck(msgId,"succeed")
 
@@ -195,14 +199,13 @@ class mqttClientFace(threading.Thread):
                 self.publishNormalAck(msgId,"infer error")
             else:
                 #上传图片
-                imgBed = "http://47.108.53.108:2077/api/file/upload"
                 file = open(outImgPath, 'rb')
                 multipart_encoder = MultipartEncoder(
                     fields={"file":("test.jpg",file,"image/jpg")},
                 )
                 h={}
                 h['Content-Type']=multipart_encoder.content_type
-                postResult = requests.post(imgBed,data=multipart_encoder,headers=h)
+                postResult = requests.post(self.imgbed,data=multipart_encoder,headers=h)
                 logger.info("img upload:{}".format(postResult.text))
                 resImg = json.loads(postResult.text).get('data').get('url')
                 self.publishRecognitionAck(msgId,resImg,res)
@@ -248,8 +251,6 @@ class mqttClientFace(threading.Thread):
             return True
         return False
 
-
-   
     def setCallback(self,netChange=None,inferCallback=None):
         self.netChangeCb = netChange
         self.inferCallbakc = inferCallback
@@ -281,19 +282,19 @@ class mqttClientFace(threading.Thread):
 import keyboard
 
 
-def main():
-    face = mqttClientFace()
-    face.start()
-    face.go()
-    try:
-        while(1):
-            if keyboard.is_pressed('q'): 
-                face.close()
-                break
-            time.sleep(5)
-    except:
-        face.close()
+# def main():
+#     face = mqttClientFace()
+#     face.start()
+#     face.go()
+#     try:
+#         while(1):
+#             if keyboard.is_pressed('q'): 
+#                 face.close()
+#                 break
+#             time.sleep(5)
+#     except:
+#         face.close()
 
 
-if __name__ == "__main__":
-        main()
+# if __name__ == "__main__":
+#         main()

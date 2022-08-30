@@ -59,7 +59,13 @@ mobilenet_2.pth
 ```
 https://drive.google.com/uc?export=download&id=15zP8BP-5IvWXWZoYTNdvUJUiBqZ1hxu1
 ```
-* 生成识别库
+* 新增识别对象
+这里仅仅是将图片传入到预备区，需要后面更新了识别库后才能被作为已知的识别对象
+、、、
+python main.py -m input -i D://123.jpg -n feng
+、、、
+
+* 更新生成识别库
 ```
 python main.py -m update
 ```
@@ -85,7 +91,7 @@ load model from D:\code\face\my\FaceLib\independent\weights\mobilenet_2.pth
 2022-08-17 15:47:51.838 | INFO     | __main__:update_facebank:70 - start join people qiu
 2022-08-17 15:47:52.042 | INFO     | __main__:update_facebank:96 - update facebank success
 ```
-* 识别，识别完成的图片会报错到out文件夹里
+* 识别，识别完成的图片会保存到out文件夹里
 ```
 python main.py -m find -i ./faceData/2.jpg
 ```
@@ -96,3 +102,72 @@ load model from D:\code\face\my\FaceLib\independent\weights\mobilenet_2.pth
 2022-08-17 16:24:48.635 | INFO     | __main__:load_facebank:107 - load facebank success
 2022-08-17 16:24:52.396 | INFO     | __main__:main:158 - name=feng,score=0.42378219962120056
 ```
+
+* 客户端方式启动
+此方式是通过连接MQTT，实现远程识别的功能
+需要自信添加配置文件.env，然后填入下列参数,其中IMGBED是识别后结果上传的地址
+```
+MQTT_SERVER_NAME=
+MQTT_SERVER_PASSWORD=
+MQTT_SERVER_HOST=
+MQTT_SERVER_PORT=
+MQTT_ID = test
+IMGBED = http://xxx/api/file/upload
+```
+MQTT主题
+|主题|	Topic|
+|---|---|
+|添加新识别对象图片|faceRecognition/ID/addFace|
+|更新识别库	|faceRecognition/ID/updateFaceLib|
+|识别|	faceRecognition/ID/rct|
+|识别应答	|faceRecognition/ID/recAck|
+|通用应答|	faceRecognition/ID/ack|
+
+内容均为JSON，
+
+添加新识别对象图片：
+|字段|	内容|
+|---|---|
+|img|	url连接|
+|name|	图片对象名称|
+|msgId|	命令的唯一ID|
+
+通用应答：
+|字段	|内容|
+|---|---|
+|msgId|	准备应答命令的唯一ID|
+|result|	执行情况，正常则内容是succeed|
+
+更新识别库：
+|字段|	内容|
+|---|---|
+|msgId|	命令唯一ID|
+
+通用应答，此过程可能持续较长时间
+
+识别
+|字段|	内容|
+|---|---|
+|img	|需要识别图片的url|
+|msgId|	命令的唯一ID|
+
+识别应答
+|字段	|内容|
+|---|---|
+|img|	识别后标注了的图片|
+|result|	识别的结果，会用多个|
+|msgId	|应答识别命令的唯一ID|
+
+```
+{
+ "img":"url",
+ "result":[{"name":"fff","score":"1.0"}],
+ "msgId":"123123"
+}
+```
+
+* GUI方式启动
+```
+python main.py -m cli
+```
+

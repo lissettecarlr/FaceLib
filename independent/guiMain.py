@@ -41,14 +41,17 @@ class wincore (QtWidgets.QMainWindow,Ui_MainWindow):
         self.mqttNet.suspend()
 
     def inferCallbakc(self,taskId,img,res):
+        self.label.setText("识别任务：")
         self.label_2.setText(taskId)
+        self.label_3.setText("识别结果：")
         self.label_4.setText(res)
         pixmap = QPixmap(img)
         self.label_5.setScaledContents(True)
         self.label_5.setPixmap(pixmap)
 
     def netChange(self,status):
-        print(status)
+        if(status == False):
+            pass
 
 
 def startGui():

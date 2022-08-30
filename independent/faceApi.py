@@ -16,6 +16,7 @@ class faceApi():
         conf = get_config()
         self.facebank_path = conf.facebank_path
         self.detector = FaceDetector(name= "resnet",device=conf.device,weight_path = conf.work_path)
+        #self.detector = FaceDetector(device=conf.device,weight_path = conf.work_path)
         self.face_rec = FaceRecognizer(conf)# name="ir_se50"
 
     # 将原始图像变为人脸图像 
@@ -45,7 +46,7 @@ class faceApi():
                     face = self.detector.detect_align(faceImg)[0].cpu().numpy()
 
                     isExists = os.path.exists(save_path + "\\" + name)
-                    if not isExists:
+                    if not isExists: 
                         os.makedirs(save_path + "\\" + name)
                         logger.debug("创建文件夹{}".format(save_path + "\\" + name))
                     if len(face.shape) > 1:
@@ -161,3 +162,8 @@ class faceApi():
 
         cv2.imwrite(outImgPath,image)
         return resList
+
+# f = faceApi()
+# inpath = "D:\\code\\face\\my\\FaceLib\\independent\\out\\test"
+# outpath = "D:\\code\\face\\my\\FaceLib\\independent\\out\\test2"
+# f.data_align(inpath,outpath)
