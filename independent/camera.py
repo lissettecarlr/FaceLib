@@ -26,7 +26,6 @@ class WebcamVerify:
         self.top = top
         self.api = faceApi.faceApi()
         self.targets ,self.names = self.api.load_facebank()
-
         #self.targets, self.names = load_facebank(self.conf)
             
     def img_resize(self,img):

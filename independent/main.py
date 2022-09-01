@@ -26,7 +26,7 @@ def main(args):
     parser.add_argument('-o','--outImg', default='',help="output retinaface image path")
     parser.add_argument('-n','--imgName', default='',help="input face image name")
     args = parser.parse_args()
-
+    
     if(args.model == "find"):
         face.infer(args.img,"./out/test.jpg")
     elif(args.model == "update"):
